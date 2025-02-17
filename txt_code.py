@@ -2,9 +2,10 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-import time
 from PIL import Image
 from IPython.display import display
+import time
+from datetime import datetime, timedelta
 
 
 # Setup Chrome options
@@ -22,28 +23,54 @@ chrome_options.add_experimental_option("useAutomationExtension", False)
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
 try:
-    # Open the Truth Social profile page
+    # Open Trump's Truth Social profile page
     url = "https://truthsocial.com/@realDonaldTrump"
     driver.get(url)
     
     # Wait for the page to load
     time.sleep(5)
 
-    # Locate the specific post element by class name
-    post_element = driver.find_element("xpath", "//div[contains(@class, 'status cursor-pointer focusable')]")
+    # Scroll down slightly to ensure posts are visible
+    driver.execute_script("window.scrollBy(0, 500);")  
+    time.sleep(2)
 
-    # Scroll the element into view
-    driver.execute_script("arguments[0].scrollIntoView(true);", post_element)
-    time.sleep(2)  # Give time for it to adjust
+    # Locate the latest 10 posts
+    posts = driver.find_elements(By.XPATH, "//div[contains(@class, 'status cursor-pointer focusable')]")[:10]
+    
+    # Get the current UTC time
+    current_time = datetime.utcnow()
 
-    # Take a screenshot of the post
-    screenshot_path = "trump_post.png"
-    post_element.screenshot(screenshot_path)
-    print(f"Screenshot of the post saved as {screenshot_path}")
+    for i, post in enumerate(posts):
+        try:
+            # Locate timestamp inside each post
+            timestamp_element = post.find_element(By.XPATH, ".//time")
 
-    # Display the screenshot in Jupyter Notebook
-    img = Image.open(screenshot_path)
-    display(img)
+            # Extract timestamp from 'title' attribute
+            timestamp_text = timestamp_element.get_attribute("title")
+            if not timestamp_text:
+                print(f"Warning: No timestamp found for post {i+1}")
+                continue  # Skip this post
+
+            # Convert timestamp to datetime object
+            post_time = datetime.strptime(timestamp_text, "%b %d, %Y, %I:%M %p")
+
+            # Convert post_time to UTC (Assuming it's in EST)
+            post_time_utc = post_time  # Adjust timezone conversion if needed
+
+            # Calculate time difference
+            time_difference = (current_time - post_time_utc).total_seconds()
+
+            # If post is less than 50 seconds old, take a screenshot
+            if time_difference < 50:
+                post.screenshot(f"trump_post_{i+1}.png")
+                print(f"Captured new post (posted {int(time_difference)}s ago) - Saved as trump_post_{i+1}.png")
+
+                # Display the screenshot in Jupyter Notebook
+                img = Image.open(f"trump_post_{i+1}.png")
+                display(img)
+
+        except Exception as e:
+            print(f"Error processing post {i+1}: {e}")
 
 except Exception as e:
     print(f"Error: {e}")
